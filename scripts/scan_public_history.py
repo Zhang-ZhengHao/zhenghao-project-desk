@@ -79,6 +79,7 @@ RFC1918_NETWORKS = tuple(
 )
 RESERVED_EMAIL_DOMAINS = frozenset({"example.com", "example.net", "example.org"})
 RESERVED_EMAIL_SUFFIXES = ("example", "invalid", "localhost", "test")
+GITHUB_SERVICE_EMAILS = frozenset({"noreply@github.com", "support@github.com"})
 
 
 def run_git(
@@ -148,7 +149,10 @@ def generic_secret_is_high_confidence(match: re.Match[str]) -> bool:
 def email_is_allowed(email: str, domain: str) -> bool:
     lowered_email = email.lower()
     lowered = domain.lower()
-    if lowered_email == "noreply@github.com" or lowered == "users.noreply.github.com":
+    if (
+        lowered_email in GITHUB_SERVICE_EMAILS
+        or lowered == "users.noreply.github.com"
+    ):
         return True
     if any(
         lowered == reserved or lowered.endswith(f".{reserved}")
@@ -293,9 +297,9 @@ def index_findings(repository: Path) -> set[Finding]:
     return findings
 
 
-def object_paths(repository: Path) -> dict[str, str]:
+def object_paths(repository: Path, revisions: tuple[str, ...]) -> dict[str, str]:
     paths: dict[str, str] = {}
-    output = run_git(repository, "rev-list", "--objects", "--all")
+    output = run_git(repository, "rev-list", "--objects", *revisions)
     for line in output.splitlines():
         raw_object_id, separator, raw_path = line.partition(b" ")
         if separator and raw_path:
@@ -303,9 +307,15 @@ def object_paths(repository: Path) -> dict[str, str]:
     return paths
 
 
-def reachable_object_types(repository: Path) -> Iterable[tuple[str, str]]:
+def reachable_object_types(
+    repository: Path, revisions: tuple[str, ...]
+) -> Iterable[tuple[str, str]]:
     object_ids = run_git(
-        repository, "rev-list", "--objects", "--all", "--no-object-names"
+        repository,
+        "rev-list",
+        "--objects",
+        "--no-object-names",
+        *revisions,
     ).splitlines()
     if not object_ids:
         return ()
@@ -327,10 +337,12 @@ def reachable_object_types(repository: Path) -> Iterable[tuple[str, str]]:
     return entries
 
 
-def history_findings(repository: Path) -> set[Finding]:
+def history_findings(
+    repository: Path, revisions: tuple[str, ...]
+) -> set[Finding]:
     findings: set[Finding] = set()
-    paths = object_paths(repository)
-    for object_id, object_type in reachable_object_types(repository):
+    paths = object_paths(repository, revisions)
+    for object_id, object_type in reachable_object_types(repository, revisions):
         if object_type == "blob":
             source = f"history:{object_id[:12]}"
             if object_id in paths:
@@ -345,17 +357,27 @@ def history_findings(repository: Path) -> set[Finding]:
     return findings
 
 
-def scan(repository: Path) -> set[Finding]:
+def scan(repository: Path, *, all_refs: bool = False) -> set[Finding]:
     root = repository_root(repository)
     shallow = run_git(root, "rev-parse", "--is-shallow-repository").strip()
     if shallow != b"false":
         raise ScanError("Shallow repositories cannot prove complete history")
-    return worktree_findings(root) | index_findings(root) | history_findings(root)
+    revisions = ("--all",) if all_refs else ("HEAD",)
+    return (
+        worktree_findings(root)
+        | index_findings(root)
+        | history_findings(root, revisions)
+    )
 
 
 def parse_arguments(arguments: list[str]) -> argparse.Namespace:
     parser = argparse.ArgumentParser(
         description="Scan worktree, index, and reachable Git objects before publication."
+    )
+    parser.add_argument(
+        "--all-refs",
+        action="store_true",
+        help="scan every locally available Git ref instead of HEAD ancestry",
     )
     parser.add_argument("repository", nargs="?", default=".")
     return parser.parse_args(arguments)
@@ -363,8 +385,9 @@ def parse_arguments(arguments: list[str]) -> argparse.Namespace:
 
 def main(arguments: list[str] | None = None) -> int:
     options = parse_arguments(sys.argv[1:] if arguments is None else arguments)
+    scope = "all-refs" if options.all_refs else "HEAD"
     try:
-        findings = sorted(scan(Path(options.repository)))
+        findings = sorted(scan(Path(options.repository), all_refs=options.all_refs))
     except (OSError, ScanError, subprocess.SubprocessError):
         print(
             "public-history-scan: ERROR (repository inspection failed)",
@@ -373,10 +396,12 @@ def main(arguments: list[str] | None = None) -> int:
         return 2
 
     if not findings:
-        print("public-history-scan: PASS (0 findings)")
+        print(f"public-history-scan: PASS (0 findings, scope={scope})")
         return 0
 
-    print(f"public-history-scan: FAIL ({len(findings)} findings)")
+    print(
+        f"public-history-scan: FAIL ({len(findings)} findings, scope={scope})"
+    )
     for finding in findings:
         print(
             "- rule="

@@ -61,6 +61,15 @@ describe("delivery configuration", () => {
     expect(publicHistoryJob).toContain(
       "ref: ${{ github.event.pull_request.head.sha || github.sha }}",
     );
+    expect(workflow).toContain('      - "v*"');
+    expect(publicHistoryJob).toContain(
+      "if: github.event_name != 'workflow_dispatch' && github.ref_type != 'tag'",
+    );
+    expect(publicHistoryJob).toContain("run: npm run scan:public");
+    expect(publicHistoryJob).toContain(
+      "if: github.event_name == 'workflow_dispatch' || github.ref_type == 'tag'",
+    );
+    expect(publicHistoryJob).toContain("run: npm run scan:public:all");
     expect(workflow).toContain(
       "actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803",
     );
@@ -132,6 +141,9 @@ describe("delivery configuration", () => {
     expect(packageJson.license).toBe("MIT");
     expect(packageJson.scripts?.["scan:public"]).toBe(
       "bash scripts/scan-public-history.sh",
+    );
+    expect(packageJson.scripts?.["scan:public:all"]).toBe(
+      "bash scripts/scan-public-history.sh --all-refs",
     );
     expect(packageJson.scripts?.["check:lockfile"]).toBe(
       "node scripts/check-lockfile.mjs",

@@ -4,6 +4,8 @@ on:
   push:
     branches:
       - main
+    tags:
+      - "v*"
   pull_request:
     branches:
       - main
@@ -38,8 +40,12 @@ jobs:
           node-version-file: .node-version
       - name: Test public-history scanner
         run: python3 -m unittest discover -s scripts/tests -p 'test_public_history_scan.py'
-      - name: Scan worktree and reachable history
+      - name: Scan worktree and HEAD history
+        if: github.event_name != 'workflow_dispatch' && github.ref_type != 'tag'
         run: npm run scan:public
+      - name: Audit every fetched ref before release
+        if: github.event_name == 'workflow_dispatch' || github.ref_type == 'tag'
+        run: npm run scan:public:all
 
   supply_chain:
     name: Supply chain

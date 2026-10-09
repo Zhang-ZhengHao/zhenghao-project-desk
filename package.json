@@ -22,6 +22,7 @@
     "test:unit:watch": "vitest",
     "test:e2e": "playwright test",
     "scan:public": "bash scripts/scan-public-history.sh",
+    "scan:public:all": "bash scripts/scan-public-history.sh --all-refs",
     "check:lockfile": "node scripts/check-lockfile.mjs",
     "verify": "npm run check:lockfile && npm run scan:public && npm run format:check && npm run lint && npm run typecheck && npm run test:unit && npm run build"
   },

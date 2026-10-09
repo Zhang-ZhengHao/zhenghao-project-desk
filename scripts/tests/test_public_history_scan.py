@@ -59,11 +59,14 @@ class PublicHistoryScanTest(unittest.TestCase):
     def tearDown(self) -> None:
         self.repository.cleanup()
 
-    def run_scan(self, repository: Path | None = None) -> subprocess.CompletedProcess[str]:
+    def run_scan(
+        self, repository: Path | None = None, *arguments: str
+    ) -> subprocess.CompletedProcess[str]:
         return subprocess.run(
             [
                 "python3",
                 str(SCAN_PROGRAM),
+                *arguments,
                 str(self.repository.path if repository is None else repository),
             ],
             cwd=PRODUCT_ROOT,
@@ -97,6 +100,7 @@ class PublicHistoryScanTest(unittest.TestCase):
 
         self.assertEqual(result.returncode, 0, self.output(result))
         self.assertIn("PASS", result.stdout)
+        self.assertIn("scope=HEAD", result.stdout)
         self.assertNotIn(fake_token, self.output(result))
 
     def test_non_email_at_signs_and_reserved_domains_are_allowed(self) -> None:
@@ -131,6 +135,54 @@ class PublicHistoryScanTest(unittest.TestCase):
 
         self.assertEqual(result.returncode, 0, self.output(result))
         self.assertIn("PASS", result.stdout)
+
+    def test_exact_github_service_email_is_allowed_without_hiding_secrets(
+        self,
+    ) -> None:
+        fake_token = "gh" + "p_" + ("F6" * 20)
+        self.repository.write_text(
+            "service-contact.txt",
+            "support" + "@github.com\n" + "SUPPORT" + "@GITHUB.COM\n",
+        )
+        self.repository.commit_all("record GitHub service contact")
+
+        clean_result = self.run_scan()
+
+        self.assertEqual(clean_result.returncode, 0, self.output(clean_result))
+        self.repository.write_text(
+            "service-contact.txt",
+            "support" + "@github.com\n" + fake_token + "\n",
+        )
+
+        secret_result = self.run_scan()
+        output = self.output(secret_result)
+
+        self.assertEqual(secret_result.returncode, 1, output)
+        self.assertIn("secret.github_token", output)
+        self.assertNotIn("identity.personal_email", output)
+        self.assertNotIn(fake_token, output)
+
+    def test_similar_github_addresses_are_not_broadly_allowed(self) -> None:
+        rejected_addresses = [
+            "person" + "@github.com",
+            "support+alerts" + "@github.com",
+            "support" + "@sub.github.com",
+            "support" + "@github.co",
+            "support" + "@github.com.evil.dev",
+            "mysupport" + "@github.com",
+        ]
+        self.repository.write_text(
+            "untrusted-contacts.txt", "\n".join(rejected_addresses) + "\n"
+        )
+        self.repository.commit_all("record untrusted contacts")
+
+        result = self.run_scan()
+        output = self.output(result)
+
+        self.assertEqual(result.returncode, 1, output)
+        self.assertIn("identity.personal_email", output)
+        for address in rejected_addresses:
+            self.assertNotIn(address, output)
 
     def test_supported_service_tokens_are_reported_without_echoing_values(self) -> None:
         self.seed_clean_commit()
@@ -242,7 +294,29 @@ class PublicHistoryScanTest(unittest.TestCase):
         self.assertIn("history:", output)
         self.assertNotIn(fake_token, output)
 
-    def test_annotated_tag_metadata_is_scanned(self) -> None:
+    def test_unrelated_branch_is_isolated_by_default_and_found_in_all_refs(
+        self,
+    ) -> None:
+        self.seed_clean_commit()
+        personal_email = "automation" + "@private." + "dev"
+        self.repository.git("checkout", "--quiet", "-b", "automation/update")
+        self.repository.git("config", "user.email", personal_email)
+        self.repository.write_text("automation.txt", "automated update\n")
+        self.repository.commit_all("add isolated automation update")
+        self.repository.git("checkout", "--quiet", "main")
+
+        head_result = self.run_scan()
+        all_refs_result = self.run_scan(None, "--all-refs")
+        all_refs_output = self.output(all_refs_result)
+
+        self.assertEqual(head_result.returncode, 0, self.output(head_result))
+        self.assertIn("scope=HEAD", head_result.stdout)
+        self.assertEqual(all_refs_result.returncode, 1, all_refs_output)
+        self.assertIn("scope=all-refs", all_refs_output)
+        self.assertIn("identity.personal_email", all_refs_output)
+        self.assertNotIn(personal_email, all_refs_output)
+
+    def test_annotated_tag_metadata_requires_all_refs_scope(self) -> None:
         self.seed_clean_commit()
         internal_location = "/work" + "space/release-system"
         self.repository.git(
@@ -253,10 +327,13 @@ class PublicHistoryScanTest(unittest.TestCase):
             f"release source {internal_location}",
         )
 
-        result = self.run_scan()
-        output = self.output(result)
+        head_result = self.run_scan()
+        all_refs_result = self.run_scan(None, "--all-refs")
+        output = self.output(all_refs_result)
 
-        self.assertEqual(result.returncode, 1, output)
+        self.assertEqual(head_result.returncode, 0, self.output(head_result))
+        self.assertEqual(all_refs_result.returncode, 1, output)
+        self.assertIn("scope=all-refs", output)
         self.assertIn("path.internal_workspace", output)
         self.assertIn("history-meta:tag:", output)
         self.assertNotIn(internal_location, output)
@@ -377,6 +454,12 @@ class PublicHistoryScanTest(unittest.TestCase):
             )
 
             result = self.run_scan(shallow)
+
+        self.assertEqual(result.returncode, 2, self.output(result))
+        self.assertIn("ERROR", result.stderr)
+
+    def test_repository_without_head_fails_closed(self) -> None:
+        result = self.run_scan()
 
         self.assertEqual(result.returncode, 2, self.output(result))
         self.assertIn("ERROR", result.stderr)
