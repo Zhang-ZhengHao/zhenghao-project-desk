@@ -2,7 +2,7 @@
 
 ## Current support boundary
 
-This repository is in bootstrap and does not yet accept real project inquiries. No revision is currently production-ready.
+This repository contains a hosted foundation preview and does not yet accept real project inquiries. No revision is currently production-ready.
 
 When the intake workflow opens, the documentation will identify the supported release, data-retention policy, and private reporting channel. Until then, do not submit secrets, personal information, customer material, or vulnerability details through a public GitHub issue.
 

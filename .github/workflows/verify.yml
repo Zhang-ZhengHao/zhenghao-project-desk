@@ -1,0 +1,215 @@
+name: Verify
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+    branches:
+      - main
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: verify-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+defaults:
+  run:
+    shell: bash
+
+jobs:
+  public_history:
+    name: Public history
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - name: Check out full history
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Set up Node.js
+        uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38
+        with:
+          node-version-file: .node-version
+      - name: Test public-history scanner
+        run: python3 -m unittest discover -s scripts/tests -p 'test_public_history_scan.py'
+      - name: Scan worktree and reachable history
+        run: npm run scan:public
+
+  supply_chain:
+    name: Supply chain
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - name: Check out source
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
+        with:
+          persist-credentials: false
+      - name: Set up Node.js
+        uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38
+        with:
+          node-version-file: .node-version
+          cache: npm
+      - name: Check lockfile policy
+        run: npm run check:lockfile
+      - name: Audit known high-severity vulnerabilities
+        run: npm audit --package-lock-only --audit-level=high
+      - name: Verify registry signatures
+        run: npm audit signatures --package-lock-only
+
+  quality:
+    name: Quality
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - name: Check out source
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
+        with:
+          persist-credentials: false
+      - name: Set up Node.js
+        uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38
+        with:
+          node-version-file: .node-version
+          cache: npm
+      - name: Install locked dependencies
+        run: npm ci --ignore-scripts --no-audit --no-fund
+      - name: Check formatting
+        run: npm run format:check
+      - name: Lint
+        run: npm run lint
+      - name: Type-check
+        run: npm run typecheck
+      - name: Run unit tests
+        run: npm run test:unit
+      - name: Build standalone application
+        run: npm run build
+
+  browser:
+    name: Browser
+    needs: quality
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    steps:
+      - name: Check out source
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
+        with:
+          persist-credentials: false
+      - name: Set up Node.js
+        uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38
+        with:
+          node-version-file: .node-version
+          cache: npm
+      - name: Install locked dependencies
+        run: npm ci --ignore-scripts --no-audit --no-fund
+      - name: Install Chromium
+        run: npx playwright install --with-deps chromium
+      - name: Build standalone application
+        run: npm run build
+      - name: Run desktop and mobile browser tests
+        run: npm run test:e2e
+      - name: Upload browser evidence on failure
+        if: failure()
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f
+        with:
+          name: playwright-failure-${{ github.run_id }}
+          path: |
+            playwright-report
+            test-results
+          if-no-files-found: ignore
+          retention-days: 7
+
+  container:
+    name: Container
+    needs: quality
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    steps:
+      - name: Check out source
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
+        with:
+          persist-credentials: false
+      - name: Build runtime image
+        run: docker build --pull --tag zhenghao-project-desk:${{ github.sha }} .
+      - name: Smoke-test hardened runtime
+        run: |
+          set -euo pipefail
+          container_name="project-desk-${GITHUB_RUN_ID}"
+          container_port="$((20000 + GITHUB_RUN_NUMBER % 20000))"
+          cleanup() {
+            status=$?
+            trap - EXIT
+            if ((status != 0)); then
+              docker logs "$container_name" || true
+            fi
+            docker rm --force "$container_name" >/dev/null 2>&1 || true
+            exit "$status"
+          }
+          trap cleanup EXIT
+
+          docker run --detach \
+            --name "$container_name" \
+            --read-only \
+            --cap-drop=ALL \
+            --security-opt no-new-privileges \
+            --tmpfs /app/.next/cache:rw,noexec,nosuid,size=64m \
+            --tmpfs /tmp:rw,noexec,nosuid,size=16m \
+            --env "APP_VERSION=0.1.0-ci" \
+            --env "BUILD_SHA=${GITHUB_SHA}" \
+            --env "PORT=${container_port}" \
+            --publish "127.0.0.1::${container_port}" \
+            "zhenghao-project-desk:${GITHUB_SHA}"
+
+          host_port="$(docker port "$container_name" "${container_port}/tcp" | awk -F: 'NR == 1 { print $NF }')"
+          base_url="http://127.0.0.1:${host_port}"
+          for attempt in {1..30}; do
+            if curl --fail --silent --show-error "${base_url}/health" >health.json; then
+              break
+            fi
+            if ((attempt == 30)); then
+              exit 1
+            fi
+            sleep 1
+          done
+
+          curl --fail --silent --show-error "${base_url}/" >landing.html
+          asset_path="$(grep -oE '/_next/static/[^\" ]+\.css' landing.html | sed -n '1p')"
+          test -n "$asset_path"
+          curl --fail --silent --show-error "${base_url}${asset_path}" >/dev/null
+          test "$(docker exec "$container_name" id -u)" = "10001"
+      - name: Scan runtime image
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25
+        with:
+          image-ref: zhenghao-project-desk:${{ github.sha }}
+          format: table
+          exit-code: 1
+          ignore-unfixed: true
+          vuln-type: os,library
+          severity: HIGH,CRITICAL
+
+  gate:
+    name: Verify gate
+    if: always()
+    needs:
+      - public_history
+      - supply_chain
+      - quality
+      - browser
+      - container
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - name: Require every verification job
+        run: |
+          set -euo pipefail
+          for result in \
+            "${{ needs.public_history.result }}" \
+            "${{ needs.supply_chain.result }}" \
+            "${{ needs.quality.result }}" \
+            "${{ needs.browser.result }}" \
+            "${{ needs.container.result }}"; do
+            test "$result" = "success"
+          done
