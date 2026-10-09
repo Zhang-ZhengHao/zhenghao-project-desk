@@ -71,13 +71,13 @@ describe("delivery configuration", () => {
     );
     expect(publicHistoryJob).toContain("run: npm run scan:public:all");
     expect(workflow).toContain(
-      "actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803",
+      "actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1",
     );
     expect(workflow).toContain(
-      "actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38",
+      "actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1",
     );
     expect(workflow).toContain(
-      "actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f",
+      "actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9",
     );
     expect(workflow).toContain(
       "aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25",
@@ -130,6 +130,22 @@ describe("delivery configuration", () => {
     expect(dependabot).toContain('package-ecosystem: "github-actions"');
     expect(dependabot).toMatch(/interval: "weekly"/u);
     expect(dependabot).toMatch(/open-pull-requests-limit: [1-9]/u);
+  });
+
+  it("keeps compiler and Node types on runtime-compatible major versions", () => {
+    const dependabot = readProjectFile(".github/dependabot.yml");
+    const npmUpdates = dependabot.split(
+      '\n  - package-ecosystem: "github-actions"',
+    )[0];
+
+    for (const dependency of ['"typescript"', '"@types/node"']) {
+      expect(npmUpdates).toMatch(
+        new RegExp(
+          `dependency-name: ${dependency}[\\s\\S]*?update-types:[\\s\\S]*?- "version-update:semver-major"`,
+          "u",
+        ),
+      );
+    }
   });
 
   it("provides deterministic local commands for security checks", () => {
