@@ -10,7 +10,7 @@ Hosted foundation preview only. The landing page and liveness endpoint are imple
 
 - No real inquiries are accepted by this revision.
 - v0.1 will not include payments, proposal approval, file uploads, or electronic signatures.
-- Screenshots, fixtures, and test identities will use synthetic data only.
+- Operational records, fixtures, and test identities use synthetic data. Public developer-profile branding may appear in referenced portfolio screenshots.
 - Never submit passwords, API keys, production data, identity documents, health information, or payment-card data.
 
 ## Implemented foundation
@@ -37,4 +37,4 @@ Do not report a vulnerability through a public issue. See [`SECURITY.md`](SECURI
 
 ## License
 
-[MIT](LICENSE)
+The source code in this repository is available under the [MIT License](LICENSE). Referenced project screenshots remain subject to their source repositories' asset-specific rights notices.

@@ -30,7 +30,7 @@ A request, cookie, header, or URL cannot switch that process capability. Primary
 - Reference links are inert metadata and are never fetched.
 - Tokens are one-time, purpose-bound, expiring, and stored only as hashes.
 - Logs omit email addresses, inquiry text, cookies, tokens, and OAuth credentials.
-- Screenshots, videos, fixtures, issues, and CI artifacts use synthetic data only.
+- Operational records and scenario identities in screenshots, videos, fixtures, issues, and CI artifacts use synthetic data. Public developer-profile branding is not presented as a customer identity.
 
 ## Release sequence
 

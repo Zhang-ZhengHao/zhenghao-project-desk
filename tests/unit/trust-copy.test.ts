@@ -22,6 +22,18 @@ describe("repository trust copy", () => {
     expect(readme).not.toContain("receive an honest review status");
     expect(readme).toContain("## Implemented foundation");
     expect(readme).toContain("## Still planned for v0.1");
+    expect(readme).toContain(
+      "Operational records, fixtures, and test identities use synthetic data.",
+    );
+    expect(readme).toContain(
+      "Public developer-profile branding may appear in referenced portfolio screenshots.",
+    );
+    expect(readme).toContain(
+      "source repositories' asset-specific rights notices",
+    );
+    expect(readme).not.toContain(
+      "Screenshots, fixtures, and test identities will use synthetic data only.",
+    );
     expect(readme).not.toContain("## Planned v0.1 evidence");
     expect(security).toContain("hosted foundation preview");
     expect(security).not.toContain("repository is in bootstrap");
