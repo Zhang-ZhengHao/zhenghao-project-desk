@@ -21,7 +21,23 @@ ENV HOSTNAME=0.0.0.0 \
     NODE_ENV=production
 WORKDIR /app
 
-RUN groupadd --system --gid 10001 nodejs \
+RUN apt-get update \
+    && apt-get upgrade -y --no-install-recommends \
+    && apt-get clean \
+    && rm -rf \
+        /var/lib/apt/lists/* \
+        /usr/local/lib/node_modules/corepack \
+        /usr/local/lib/node_modules/npm \
+        /opt/yarn-v1.22.22 \
+    && rm -f \
+        /usr/local/bin/corepack \
+        /usr/local/bin/npm \
+        /usr/local/bin/npx \
+        /usr/local/bin/pnpm \
+        /usr/local/bin/pnpx \
+        /usr/local/bin/yarn \
+        /usr/local/bin/yarnpkg \
+    && groupadd --system --gid 10001 nodejs \
     && useradd --system --uid 10001 --gid nodejs --home-dir /nonexistent --shell /usr/sbin/nologin nextjs
 
 COPY --from=builder --chown=10001:10001 /app/.next/standalone ./

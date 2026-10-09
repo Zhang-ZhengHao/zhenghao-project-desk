@@ -25,6 +25,10 @@ describe("delivery configuration", () => {
       "FROM node:24.20.0-bookworm-slim AS runtime",
     )[1];
     expect(runtimeStage).toBeDefined();
+    expect(runtimeStage).toContain(
+      "apt-get upgrade -y --no-install-recommends",
+    );
+    expect(runtimeStage).toContain("/usr/local/lib/node_modules/npm");
     expect(runtimeStage).not.toContain("npm ci");
     expect(runtimeStage).not.toMatch(/COPY\s+\.\s+\./u);
   });
@@ -46,10 +50,17 @@ describe("delivery configuration", () => {
 
   it("pins CI actions and exposes a stable aggregate gate", () => {
     const workflow = readProjectFile(".github/workflows/verify.yml");
+    const publicHistoryJob = workflow
+      .split("\n  supply_chain:")[0]
+      ?.split("\n  public_history:")[1];
 
     expect(workflow).toContain("permissions:\n  contents: read");
     expect(workflow).toContain("persist-credentials: false");
-    expect(workflow).toContain("fetch-depth: 0");
+    expect(publicHistoryJob).toBeDefined();
+    expect(publicHistoryJob).toContain("fetch-depth: 0");
+    expect(publicHistoryJob).toContain(
+      "ref: ${{ github.event.pull_request.head.sha || github.sha }}",
+    );
     expect(workflow).toContain(
       "actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803",
     );
@@ -67,6 +78,28 @@ describe("delivery configuration", () => {
     expect(workflow).not.toContain("pull_request_target");
     expect(workflow).not.toContain("dependency-review-action");
     expect(workflow).not.toContain("github/codeql-action");
+  });
+
+  it("installs the locked tree before auditing registry signatures", () => {
+    const workflow = readProjectFile(".github/workflows/verify.yml");
+    const supplyChainJob = workflow
+      .split("\n  quality:")[0]
+      ?.split("\n  supply_chain:")[1];
+
+    expect(supplyChainJob).toBeDefined();
+    expect(supplyChainJob).toContain(
+      "run: npm ci --ignore-scripts --no-audit --no-fund",
+    );
+    expect(supplyChainJob).toContain("run: npm audit signatures");
+
+    const policyIndex =
+      supplyChainJob?.indexOf("run: npm run check:lockfile") ?? -1;
+    const installIndex = supplyChainJob?.indexOf("run: npm ci") ?? -1;
+    const signatureIndex =
+      supplyChainJob?.indexOf("run: npm audit signatures") ?? -1;
+    expect(policyIndex).toBeGreaterThan(-1);
+    expect(installIndex).toBeGreaterThan(policyIndex);
+    expect(signatureIndex).toBeGreaterThan(installIndex);
   });
 
   it("smoke-tests a hardened container and both browser viewports in CI", () => {
