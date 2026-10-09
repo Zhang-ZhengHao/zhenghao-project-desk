@@ -1,0 +1,28 @@
+# Dependencies and builds
+node_modules/
+.next/
+out/
+dist/
+coverage/
+playwright-report/
+test-results/
+
+# Local configuration and secrets
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+
+# Local data and logs
+data/
+*.log
+*.pid
+
+# Editors and operating systems
+.DS_Store
+.idea/
+.vscode/
+
+# Worktrees
+.worktrees/
