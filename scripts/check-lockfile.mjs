@@ -107,6 +107,9 @@ function hasApprovedLicense(name, entry) {
   if (name === "caniuse-lite") {
     return entry.license === "CC-BY-4.0";
   }
+  if (name === "postgres") {
+    return entry.license === "Unlicense";
+  }
   if (name.startsWith("@img/sharp-libvips-")) {
     return entry.license === "LGPL-3.0-or-later" && entry.optional === true;
   }

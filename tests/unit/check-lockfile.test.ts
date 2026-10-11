@@ -322,6 +322,25 @@ describe("lockfile policy fixture", () => {
     expect(result.status).toBe(0);
   });
 
+  it("accepts Unlicense only for the reviewed postgres driver", () => {
+    const accepted = runPolicy(
+      createFixture(({ lockfile }) => {
+        lockfile.packages["node_modules/postgres"] = {
+          ...registryPackage("3.4.9", "Unlicense"),
+        };
+      }),
+    );
+    const rejected = runPolicy(
+      createFixture(({ lockfile }) => {
+        lockfile.packages["node_modules/safe-dependency"].license = "Unlicense";
+      }),
+    );
+
+    expect(accepted.status).toBe(0);
+    expect(rejected.status).not.toBe(0);
+    expect(rejected.stderr).toContain("license is not approved");
+  });
+
   it.each([
     "",
     "GPL-3.0-only",

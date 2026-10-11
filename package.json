@@ -13,6 +13,8 @@
   "scripts": {
     "dev": "next dev --hostname 0.0.0.0",
     "build": "next build && node scripts/package-standalone.mjs",
+    "db:migrate:primary": "node scripts/migrate.ts primary",
+    "db:migrate:demo": "node scripts/migrate.ts demo",
     "start": "bash scripts/start-hosted.sh",
     "format": "prettier --write .",
     "format:check": "prettier --check .",
@@ -21,16 +23,20 @@
     "test:unit": "vitest run",
     "test:unit:watch": "vitest",
     "test:e2e": "playwright test",
+    "test:integration": "vitest run --config vitest.integration.config.ts",
     "scan:public": "bash scripts/scan-public-history.sh",
     "scan:public:all": "bash scripts/scan-public-history.sh --all-refs",
     "check:lockfile": "node scripts/check-lockfile.mjs",
     "verify": "npm run check:lockfile && npm run scan:public && npm run format:check && npm run lint && npm run typecheck && npm run test:unit && npm run build"
   },
   "dependencies": {
+    "drizzle-orm": "0.45.4",
     "geist": "1.7.2",
     "next": "16.4.0",
+    "postgres": "3.4.9",
     "react": "19.3.0",
-    "react-dom": "19.3.0"
+    "react-dom": "19.3.0",
+    "zod": "4.6.5"
   },
   "devDependencies": {
     "@eslint/js": "10.0.1",

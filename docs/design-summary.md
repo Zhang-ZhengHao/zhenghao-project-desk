@@ -23,6 +23,23 @@ The codebase may share domain and schema modules, but a running process has one 
 
 A request, cookie, header, or URL cannot switch that process capability. Primary and demo deployments receive different database credentials and secrets. The v0.1 public release enables only the primary workflow; proposal approval and the isolated test-payment demo are later milestones.
 
+## Database capability boundary
+
+Four login roles keep runtime access separate:
+
+| Role               | Database access | Capability                                     |
+| ------------------ | --------------- | ---------------------------------------------- |
+| `primary_app`      | Primary only    | Business-table DML and migration-journal reads |
+| `primary_migrator` | Primary only    | Schema migration and journal ownership         |
+| `demo_app`         | Demo only       | Business-table DML and migration-journal reads |
+| `demo_migrator`    | Demo only       | Schema migration and journal ownership         |
+
+All four roles are non-superusers without database creation, role creation, replication, or row-security bypass. `PUBLIC` database and schema privileges are revoked before migration. App roles have no schema creation, temporary-table, or migration-journal write capability. Default privileges apply the same boundary to future tables created by the corresponding migrator.
+
+The two databases use the same version-controlled Drizzle SQL and must produce the same schema fingerprint. Before applying anything, the migration process compares the existing journal with the expected ordered prefix. It then takes a PostgreSQL advisory lock, runs pending work, and requires the exact committed migration journal before reporting success. A changed checksum or unknown migration fails closed.
+
+`/health` proves only that the web process is alive. `/ready` reads the fixed runtime's migration journal and returns a non-diagnostic `503` for missing configuration, an unreachable database, an empty database, or a divergent journal. Neither endpoint can be redirected to the other mode by request input.
+
 ## Trust and privacy rules
 
 - No fabricated clients, testimonials, revenue, conversion metrics, or usage figures.

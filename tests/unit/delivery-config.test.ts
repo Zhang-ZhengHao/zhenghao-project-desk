@@ -165,4 +165,37 @@ describe("delivery configuration", () => {
       "node scripts/check-lockfile.mjs",
     );
   });
+
+  it("gates delivery on isolated PostgreSQL migrations and integration tests", () => {
+    const workflow = readProjectFile(".github/workflows/verify.yml");
+    const databaseJob = workflow
+      .split("\n  browser:")[0]
+      ?.split("\n  database:")[1];
+
+    expect(databaseJob).toBeDefined();
+    expect(databaseJob).toContain(
+      "image: postgres:17-alpine@sha256:b0f9560a2de083e2cc7382e75f808c7381a32852a7ec49117deedb300e552b24",
+    );
+    expect(databaseJob).toContain("--health-cmd pg_isready");
+    expect(databaseJob).toContain("scripts/ci/provision-postgres.sql");
+    expect(databaseJob?.match(/npm run db:migrate:primary/gu)).toHaveLength(2);
+    expect(databaseJob?.match(/npm run db:migrate:demo/gu)).toHaveLength(2);
+    expect(databaseJob).toContain("npm run test:integration");
+    expect(workflow).toMatch(/needs:[\s\S]*?- database/u);
+    expect(workflow).toContain('"${{ needs.database.result }}"');
+
+    const packageJson = JSON.parse(readProjectFile("package.json")) as {
+      scripts?: Record<string, string>;
+    };
+    expect(packageJson.scripts?.["db:migrate:primary"]).toBe(
+      "node scripts/migrate.ts primary",
+    );
+    expect(packageJson.scripts?.["db:migrate:demo"]).toBe(
+      "node scripts/migrate.ts demo",
+    );
+    expect(packageJson.scripts).not.toHaveProperty("db:migrate:test");
+    expect(packageJson.scripts?.["test:integration"]).toBe(
+      "vitest run --config vitest.integration.config.ts",
+    );
+  });
 });

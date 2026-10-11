@@ -97,6 +97,69 @@ jobs:
       - name: Build standalone application
         run: npm run build
 
+  database:
+    name: Database
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    services:
+      postgres:
+        image: postgres:17-alpine@sha256:b0f9560a2de083e2cc7382e75f808c7381a32852a7ec49117deedb300e552b24
+        env:
+          POSTGRES_PASSWORD: postgres_ci
+          POSTGRES_USER: postgres
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    steps:
+      - name: Check out source
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
+      - name: Set up Node.js
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1
+        with:
+          node-version-file: .node-version
+          cache: npm
+      - name: Install locked dependencies
+        run: npm ci --ignore-scripts --no-audit --no-fund
+      - name: Provision isolated databases and roles
+        run: |
+          docker exec --interactive "${{ job.services.postgres.id }}" \
+            psql --set ON_ERROR_STOP=1 --username postgres --dbname postgres \
+            < scripts/ci/provision-postgres.sql
+      - name: Migrate primary database from empty state
+        env:
+          APP_MODE: primary
+          PRIMARY_MIGRATION_DATABASE_URL: postgresql://primary_migrator:primary_migrator_ci@127.0.0.1:5432/project_desk_primary
+        run: npm run db:migrate:primary
+      - name: Repeat primary migration
+        env:
+          APP_MODE: primary
+          PRIMARY_MIGRATION_DATABASE_URL: postgresql://primary_migrator:primary_migrator_ci@127.0.0.1:5432/project_desk_primary
+        run: npm run db:migrate:primary
+      - name: Migrate demo database from empty state
+        env:
+          APP_MODE: demo
+          DEMO_MIGRATION_DATABASE_URL: postgresql://demo_migrator:demo_migrator_ci@127.0.0.1:5432/project_desk_demo
+        run: npm run db:migrate:demo
+      - name: Repeat demo migration
+        env:
+          APP_MODE: demo
+          DEMO_MIGRATION_DATABASE_URL: postgresql://demo_migrator:demo_migrator_ci@127.0.0.1:5432/project_desk_demo
+        run: npm run db:migrate:demo
+      - name: Verify PostgreSQL boundaries
+        env:
+          TEST_POSTGRES_ADMIN_URL: postgresql://postgres:postgres_ci@127.0.0.1:5432/postgres
+          TEST_PRIMARY_APP_URL: postgresql://primary_app:primary_app_ci@127.0.0.1:5432/project_desk_primary
+          TEST_PRIMARY_MIGRATOR_URL: postgresql://primary_migrator:primary_migrator_ci@127.0.0.1:5432/project_desk_primary
+          TEST_DEMO_APP_URL: postgresql://demo_app:demo_app_ci@127.0.0.1:5432/project_desk_demo
+          TEST_DEMO_MIGRATOR_URL: postgresql://demo_migrator:demo_migrator_ci@127.0.0.1:5432/project_desk_demo
+        run: npm run test:integration
+
   browser:
     name: Browser
     needs: quality
@@ -206,6 +269,7 @@ jobs:
       - public_history
       - supply_chain
       - quality
+      - database
       - browser
       - container
     runs-on: ubuntu-24.04
@@ -218,6 +282,7 @@ jobs:
             "${{ needs.public_history.result }}" \
             "${{ needs.supply_chain.result }}" \
             "${{ needs.quality.result }}" \
+            "${{ needs.database.result }}" \
             "${{ needs.browser.result }}" \
             "${{ needs.container.result }}"; do
             test "$result" = "success"
