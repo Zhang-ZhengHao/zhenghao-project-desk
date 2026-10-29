@@ -24,7 +24,9 @@ Hosted foundation preview only. The fixed runtime boundary, PostgreSQL schema, c
 - Standalone production packaging with `$PORT` validation and `0.0.0.0` binding for ASteam hosting
 - Desktop, tablet, and mobile browser checks covering accessibility, keyboard focus, responsive layout, and asset loading
 - Public-history scanning for the worktree, index, commit history, and Git metadata
-- A non-root standalone Docker image and pinned GitHub Actions workflow; remote CI results will be reported only after the branch is pushed
+- A non-root standalone Docker image and pinned GitHub Actions workflow
+
+Verification evidence for the foundation at commit `2e2e0c3`: [successful Verify run](https://github.com/Zhang-ZhengHao/zhenghao-project-desk/actions/runs/38142485319).
 
 ## Still planned for v0.1
 
