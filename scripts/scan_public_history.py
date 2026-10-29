@@ -81,6 +81,9 @@ RESERVED_EMAIL_DOMAINS = frozenset({"example.com", "example.net", "example.org"}
 RESERVED_EMAIL_SUFFIXES = ("example", "invalid", "localhost", "test")
 GITHUB_SERVICE_EMAILS = frozenset({"noreply@github.com", "support@github.com"})
 
+# Owner-approved email metadata in this already-public, immutable commit only.
+APPROVED_METADATA_EMAIL_COMMITS = frozenset({"46fe235249a38741b34d0907ec1110caa8d89c2b"})
+
 
 def run_git(
     repository: Path, *arguments: str, input_bytes: bytes | None = None
@@ -353,7 +356,10 @@ def history_findings(
             content = read_object(repository, object_id, object_type)
         else:
             continue
-        findings.update(findings_for_content(source, content))
+        content_findings = findings_for_content(source, content)
+        if object_type == "commit" and object_id in APPROVED_METADATA_EMAIL_COMMITS:
+            content_findings.discard(Finding(source, "identity.personal_email"))
+        findings.update(content_findings)
     return findings
 
 
