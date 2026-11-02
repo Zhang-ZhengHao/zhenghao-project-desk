@@ -31,7 +31,7 @@
   },
   "dependencies": {
     "drizzle-orm": "0.45.4",
-    "geist": "1.7.2",
+    "geist": "1.8.2",
     "next": "16.4.3",
     "postgres": "3.4.9",
     "react": "19.3.1",
